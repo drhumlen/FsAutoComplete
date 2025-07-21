@@ -1142,6 +1142,7 @@ type AdaptiveFSharpLspServer
                              tooltipInfo.HasTruncatedExamples
                              symbolInfo.XmlDocSig
                              symbolInfo.Assembly
+                             false // supportsHtml: set to false for now; make configurable if needed
                            |> U2.C1
                          | TryGetToolTipEnhancedResult.Symbol _ -> ()
                          // Display each footer line as a separate line

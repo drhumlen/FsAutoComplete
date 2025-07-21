@@ -123,8 +123,9 @@ val tryFormatTipEnhanced:
 /// <param name="hasTruncatedExamples"><c>true</c> if the examples have been truncated</param>
 /// <param name="xmlDocSig">XmlDocSignature in the format of <c>T:System.String.concat</c></param>
 /// <param name="assemblyName">Assembly name, example <c>FSharp.Core</c></param>
+/// <param name="supportsHtml">If true, output HTML; otherwise, output plain text.</param>
 /// <returns>Returns a string which represent the show documentation link</returns>
-val renderShowDocumentationLink: hasTruncatedExamples: bool -> xmlDocSig: string -> assemblyName: string -> string
+val renderShowDocumentationLink: hasTruncatedExamples: bool -> xmlDocSig: string -> assemblyName: string -> supportsHtml: bool -> string
 /// <summary>
 /// Try format the given tooltip as documentation.
 /// </summary>

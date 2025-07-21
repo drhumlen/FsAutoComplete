@@ -1305,20 +1305,23 @@ let tryFormatTipEnhanced toolTipText (formatCommentStyle: FormatCommentStyle) =
 /// <param name="hasTruncatedExamples"><c>true</c> if the examples have been truncated</param>
 /// <param name="xmlDocSig">XmlDocSignature in the format of <c>T:System.String.concat</c></param>
 /// <param name="assemblyName">Assembly name, example <c>FSharp.Core</c></param>
+/// <param name="supportsHtml">If true, output HTML; otherwise, output plain text.</param>
 /// <returns>Returns a string which represent the show documentation link</returns>
-let renderShowDocumentationLink (hasTruncatedExamples: bool) (xmlDocSig: string) (assemblyName: string) =
+let renderShowDocumentationLink (hasTruncatedExamples: bool) (xmlDocSig: string) (assemblyName: string) (supportsHtml: bool) =
+  if supportsHtml then
+    // TODO: Refactor this code, to avoid duplicate with DocumentationFormatter.fs
+    let content =
+      Uri.EscapeDataString(sprintf """[{ "XmlDocSig": "%s", "AssemblyName": "%s" }]""" xmlDocSig assemblyName)
 
-  // TODO: Refactor this code, to avoid duplicate with DocumentationFormatter.fs
-  let content =
-    Uri.EscapeDataString(sprintf """[{ "XmlDocSig": "%s", "AssemblyName": "%s" }]""" xmlDocSig assemblyName)
+    let text =
+      if hasTruncatedExamples then
+        "Open the documentation to see the truncated examples"
+      else
+        "Open the documentation"
 
-  let text =
-    if hasTruncatedExamples then
-      "Open the documentation to see the truncated examples"
-    else
-      "Open the documentation"
-
-  $"<a href='command:fsharp.showDocumentation?%s{content}'>%s{text}</a>"
+    $"<a href='command:fsharp.showDocumentation?%s{content}'>%s{text}</a>"
+  else
+    "" // Hide the documentation link in Zed and other non-HTML editors
 
 /// <summary>
 /// Try format the given tooltip as documentation.
