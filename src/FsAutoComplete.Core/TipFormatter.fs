@@ -1201,12 +1201,14 @@ let prepareSignature (signatureText: string) =
   |> Array.filter (not << String.IsNullOrWhiteSpace)
   |> String.concat nl
 
-let prepareFooterLines (footerText: string) =
-  footerText.Split Environment.NewLine
-  // Remove empty lines
-  |> Array.filter (not << String.IsNullOrWhiteSpace)
-  // Mark each line as an individual string in italics
-  |> Array.map (fun n -> "*" + n + "*")
+let prepareFooterLines (footerText: string): string[] =
+    Array.append
+      [| "---" |]
+      (footerText.Split Environment.NewLine
+       // Remove empty lines
+       |> Array.filter (not << String.IsNullOrWhiteSpace)
+       // Mark each line as an individual string in italics
+       |> Array.map (fun n -> "" + n + ""))
 
 
 let private tryComputeTooltipInfo (ToolTipText tips) (formatCommentStyle: FormatCommentStyle) =

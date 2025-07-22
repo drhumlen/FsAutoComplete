@@ -864,7 +864,7 @@ module SignatureFormatter =
       typeDisplay + typeTip ()
 
   let footerForType (entity: FSharpSymbolUse) =
-    let formatFooter (fullName, asmName) = $"Full name: %s{fullName}{nl}Assembly: %s{asmName}"
+    let formatFooter (fullName, asmName) = $"Full name: `%s{fullName}`{nl}Assembly: `%s{asmName}`"
 
     let valFooterData =
       try
