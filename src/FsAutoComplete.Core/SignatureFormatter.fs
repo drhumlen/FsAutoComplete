@@ -309,11 +309,11 @@ module SignatureFormatter =
           else
             "static member" ++ accessibility
         else if func.InlineAnnotation = FSharpInlineAnnotation.AlwaysInline then
-          "val" ++ accessibility ++ "inline"
+          "let" ++ accessibility ++ "inline"
         elif func.IsInstanceMember then
-          "val" ++ accessibility
+          "let" ++ accessibility
         else
-          "val" ++ accessibility //does this need to be static prefixed?
+          "let" ++ accessibility //does this need to be static prefixed?
 
       modifier
 
@@ -424,6 +424,7 @@ module SignatureFormatter =
         let paramType = formatParameter p
         let paramFormat = namePart ++ paramType
 
+        "("+
         if p.Type.IsGenericParameter then
           let padding =
             String.replicate (if length >= maxLength then 1 else maxLength - length) " "
@@ -443,22 +444,23 @@ module SignatureFormatter =
             paramFormat + padding + paramConstraint
         else
           paramFormat
+        + ")"
 
       let allParams =
         List.zip many allParamsLengths
         |> List.map (fun (paramTypes, length) ->
           paramTypes |> List.map (formatParameterPadded length) |> String.concat $" *{nl}")
-        |> String.concat $" ->{nl}"
+        |> String.concat $"{nl}"
 
       let typeArguments =
         let padding = String.replicate (max (padLength - 1) 0) " "
 
-        $"{allParams}{nl}{indent}{padding}->" ++ retType ++ retTypeConstraint
+        $"{allParams}{nl}{indent}{padding}: " ++ retType ++ retTypeConstraint
 
       if isDelegate then
         typeArguments
       else
-        modifiers ++ $"{functionName}:{nl}{typeArguments}"
+        modifiers ++ $"{functionName}{nl}{typeArguments} = __"
 
   let getFuncSignatureForTypeSignature
     displayContext
@@ -513,11 +515,11 @@ module SignatureFormatter =
           else
             "static member" ++ accessibility
         else if func.InlineAnnotation = FSharpInlineAnnotation.AlwaysInline then
-          "val" ++ accessibility ++ "inline"
+          "let" ++ accessibility ++ "inline"
         elif func.IsInstanceMember then
-          "val" ++ accessibility
+          "let" ++ accessibility
         else
-          "val" ++ accessibility //does this need to be static prefixed?
+          "let" ++ accessibility //does this need to be static prefixed?
 
       modifier
 
@@ -617,7 +619,7 @@ module SignatureFormatter =
   let getValSignature displayContext (v: FSharpMemberOrFunctionOrValue) =
     let retType = formatFSharpType displayContext v.FullType
 
-    let prefix = if v.IsMutable then "val mutable" else "val"
+    let prefix = if v.IsMutable then "let mutable" else "let"
 
     let name =
       (if v.DisplayName.StartsWith("( ", StringComparison.Ordinal) then
@@ -648,7 +650,7 @@ module SignatureFormatter =
     match field.LiteralValue with
     | Some lv -> field.DisplayName + ":" ++ retType ++ "=" ++ (string lv)
     | None ->
-      let prefix = if field.IsMutable then "val mutable" else "val"
+      let prefix = if field.IsMutable then "let mutable" else "let"
 
       prefix ++ field.DisplayName + ":" ++ retType
 
@@ -683,8 +685,8 @@ module SignatureFormatter =
       | _ when fse.IsEnum -> "enum"
       | _ when fse.IsValueType -> "struct"
       | _ when fse.IsNamespace -> "namespace"
-      | _ when fse.IsFSharpRecord -> "record"
-      | _ when fse.IsFSharpUnion -> "union"
+      | _ when fse.IsFSharpRecord -> "type"
+      | _ when fse.IsFSharpUnion -> "type"
       | _ when fse.IsInterface -> "interface"
       | _ -> "type"
 
@@ -849,12 +851,57 @@ module SignatureFormatter =
       else
         basicName
 
+    let someNotableMemberTypes'' () =
+          let memberTypes =
+            fse.MembersFunctionsAndValues
+            |> Seq.filter (fun n -> n.Accessibility.IsPublic && not n.IsConstructor)
+            |> Seq.map (fun n -> $"let {n.DisplayName}: {formatFSharpType displayContext n.FullType} = _")
+            |> Seq.distinct
+
+          if Seq.isEmpty memberTypes then ""
+          else $"{nl}  " + String.concat $"{nl}  " memberTypes
+
+    let someNotableTypesAndMembers () =
+            let types =
+              fse.NestedEntities
+              |> Seq.filter (fun e -> e.IsFSharpAbbreviation || e.IsFSharpRecord || e.IsFSharpUnion || e.IsFSharpRecord || e.IsFSharpUnion)
+              |> Seq.map (fun e -> $"type {e.DisplayName}")
+              |> Seq.distinct
+
+            let memberFunctionsAndValues =
+              fse.MembersFunctionsAndValues
+              |> Seq.filter (fun n -> n.Accessibility.IsPublic && not n.IsConstructor)
+              |> Seq.map (fun n -> $"let {n.DisplayName}: {formatFSharpType displayContext n.FullType} = _")
+              |> Seq.distinct
+
+            let modules =
+              fse.NestedEntities
+              |> Seq.filter (fun e -> e.IsFSharpModule)
+              |> Seq.map (fun e -> $"module {e.DisplayName}")
+              |> Seq.distinct
+
+            let classes =
+              fse.NestedEntities
+              |> Seq.filter (fun e -> e.IsClass)
+              |> Seq.map (fun e -> $"type {e.DisplayName}")
+              |> Seq.distinct
+
+            let allLines = Seq.concat [ modules; types; classes; memberFunctionsAndValues ]
+
+            if Seq.isEmpty allLines then ""
+            else $"{nl}  " + String.concat $"{nl}  " allLines
+
+
     if fse.IsFSharpUnion then
       typeDisplay + unionTip ()
     elif fse.IsEnum then
       typeDisplay + enumTip ()
     elif fse.IsDelegate then
       typeDisplay + delegateTip ()
+    elif fse.IsFSharpModule then
+      typeDisplay + someNotableTypesAndMembers ()
+    elif fse.IsNamespace then
+      typeDisplay + someNotableTypesAndMembers ()
     elif
       fse.IsFSharpAbbreviation
       && (fse.AbbreviatedType.IsTupleType || fse.AbbreviatedType.IsStructTupleType)
@@ -928,7 +975,7 @@ module SignatureFormatter =
       Some(signature, footerForType symbol)
 
     | SymbolUse.Val func ->
-      //val name : Type
+      //let name : Type
       let signature = getValSignature symbol.DisplayContext func
       Some(signature, footerForType symbol)
 
