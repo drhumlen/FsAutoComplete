@@ -460,7 +460,7 @@ module SignatureFormatter =
       if isDelegate then
         typeArguments
       else
-        modifiers ++ $"{functionName}{nl}{typeArguments} = __"
+        modifiers ++ $"{functionName}{nl}{typeArguments} = _"
 
   let getFuncSignatureForTypeSignature
     displayContext

@@ -419,7 +419,7 @@ type AdaptiveFSharpLspServer
     (argValue: 't, [<CallerMemberName; Optional; DefaultParameterValue("")>] caller: string)
     =
     logger.info (
-      Log.setMessage $"{caller} request: {{params}}"
+      Log.setMessage $"{caller} request: " // {params}"
       >> Log.addContextDestructured "params" argValue
     )
 
@@ -429,7 +429,7 @@ type AdaptiveFSharpLspServer
     (argValue: 't, [<CallerMemberName; Optional; DefaultParameterValue("")>] caller: string)
     =
     logger.info (
-      Log.setMessage $"{caller} request: {{params}}"
+      Log.setMessage $"{caller} request: " // {{params}}"
       >> Log.addContextDestructured "params" argValue
     )
 
@@ -892,122 +892,143 @@ type AdaptiveFSharpLspServer
           return! returnException e logCfg
       }
 
-    override __.CompletionItemResolve(ci: CompletionItem) =
-      let config = state.Config
+      override __.CompletionItemResolve(ci: CompletionItem) =
+            let config = state.Config
 
-      let mapHelpText (ci: CompletionItem) (text: HelpText) =
-        match text with
-        | HelpText.Simple(symbolName, text) ->
-          let d: U2<_, MarkupContent> =
-            U2.C2(
-              { Kind = MarkupKind.Markdown
-                Value = text }
-            )
+            let mapHelpText (ci: CompletionItem) (text: HelpText) =
+              match text with
+              | HelpText.Simple(symbolName, text) ->
+                let d: U2<_, MarkupContent> =
+                  U2.C2(
+                    { Kind = MarkupKind.Markdown
+                      Value = text }
+                  )
 
-          { ci with
-              Detail = Some symbolName
-              Documentation = Some d }
-        | HelpText.Full(_name, tip, additionalEdit) ->
-          let (si, comment) = TipFormatter.formatCompletionItemTip tip
+                { ci with
+                    Detail = Some symbolName
+                    Documentation = Some d }
+              | HelpText.Full(_name, tip, additionalEdit) ->
+                let (si, comment) = TipFormatter.formatCompletionItemTip tip
 
-          let edits, label =
-            match additionalEdit with
-            | None -> None, ci.Label
-            | Some { Namespace = ns; Position = fcsPos } ->
-              let text =
-                let indentation = String(' ', fcsPos.Column)
-                $"{indentation}open {ns}\n"
+                let detailText =
+                  let label =
+                    let labelText = ci.Label
+                    let parenIndex = labelText.IndexOf " ("
+                    if parenIndex > 0 then labelText.Substring(0, parenIndex) else labelText
 
-              let insertPos =
-                { (fcsPos |> fcsPosToLsp) with
-                    Character = 0u }
+                  let escapedLabel = System.Text.RegularExpressions.Regex.Escape(label)
+                  //This regex is designed to be pretty robust, but it might not cover all F# syntax.
+                  //It looks for a keyword, then the label, then a separator (`:` or `=`), and captures the rest.
+                  let pattern = $"^(?:(val(?:\\s+mutable)?|let(?:\\s+mutable)?|member|type|module|namespace)\\s+)?{escapedLabel}\\s*(?::|\\=)?\\s*(.*)$"
+                  let m = System.Text.RegularExpressions.Regex.Match(si, pattern, System.Text.RegularExpressions.RegexOptions.Singleline)
 
-              let displayText =
-                match config.ExternalAutocomplete, ci.Label.Split(" (open ") with
-                | true, [| label; _ |] -> label
-                | true, [| label |] -> label
-                | _, _ -> ci.Label
+                  if m.Success then
+                    if String.IsNullOrEmpty(m.Groups.[2].Value) && not (si.EndsWith("=") || si.EndsWith(":")) then
+                      // No type info, e.g. `type MyRecord`. Show keyword if present.
+                      m.Groups.[1].Value
+                    else
+                      m.Groups.[2].Value.TrimStart()
+                  else
+                    si
 
-              Some
-                [| { TextEdit.NewText = text
-                     TextEdit.Range = { Start = insertPos; End = insertPos } } |],
-              $"{displayText} (open {ns})"
+                let edits, label =
+                  match additionalEdit with
+                  | None -> None, ci.Label
+                  | Some { Namespace = ns; Position = fcsPos } ->
+                    let text =
+                      let indentation = String(' ', fcsPos.Column)
+                      $"{indentation}open {ns}\n"
 
-          let d =
-            U2.C2(
-              { Kind = MarkupKind.Markdown
-                Value = comment }
-            )
+                    let insertPos =
+                      { (fcsPos |> fcsPosToLsp) with
+                          Character = 0u }
 
-          { ci with
-              Detail = Some si
-              Documentation = Some d
-              AdditionalTextEdits = edits
-              Label = label }
+                    let displayText =
+                      match config.ExternalAutocomplete, ci.Label.Split(" (open ") with
+                      | true, [| label; _ |] -> label
+                      | true, [| label |] -> label
+                      | _, _ -> ci.Label
 
-      let helpText sym =
-        match KeywordList.keywordDescriptions.TryGetValue sym with
-        | true, s -> CoreResponse.Res(HelpText.Simple(sym, s))
-        | _ ->
-          match KeywordList.hashDirectives.TryGetValue sym with
-          | true, s -> CoreResponse.Res(HelpText.Simple(sym, s))
-          | _ ->
-            let sym =
-              if
-                sym.StartsWith("``", StringComparison.Ordinal)
-                && sym.EndsWith("``", StringComparison.Ordinal)
-              then
-                sym.TrimStart([| '`' |]).TrimEnd([| '`' |])
-              else
-                sym
+                    Some
+                      [| { TextEdit.NewText = text
+                           TextEdit.Range = { Start = insertPos; End = insertPos } } |],
+                    $"{displayText} (open {ns})"
 
-            match state.GetAutoCompleteByDeclName sym with
-            | None -> //Isn't in sync filled cache, we don't have result
-              CoreResponse.ErrorRes(sprintf "No help text available for symbol '%s'" sym)
-            | Some(decl, _pos, _fn, _, _) -> //Is in sync filled cache, try to get results from async filled caches or calculate if it's not there
+                let d =
+                  U2.C2(
+                    { Kind = MarkupKind.Markdown
+                      Value = comment }
+                  )
 
-              let tip = decl.Description
+                { ci with
+                    Detail = Some detailText
+                    Documentation = Some d
+                    AdditionalTextEdits = edits
+                    Label = label }
 
-              let n =
-                match state.GetAutoCompleteNamespacesByDeclName sym with
-                | Some s when not config.FullNameExternalAutocomplete -> Some s
-                | _ -> None
+            let helpText sym =
+              match KeywordList.keywordDescriptions.TryGetValue sym with
+              | true, s -> CoreResponse.Res(HelpText.Simple(sym, s))
+              | _ ->
+                match KeywordList.hashDirectives.TryGetValue sym with
+                | true, s -> CoreResponse.Res(HelpText.Simple(sym, s))
+                | _ ->
+                  let sym =
+                    if
+                      sym.StartsWith("``", StringComparison.Ordinal)
+                      && sym.EndsWith("``", StringComparison.Ordinal)
+                    then
+                      sym.TrimStart([| '`' |]).TrimEnd([| '`' |])
+                    else
+                      sym
 
-              CoreResponse.Res(HelpText.Full(sym, tip, n))
+                  match state.GetAutoCompleteByDeclName sym with
+                  | None -> //Isn't in sync filled cache, we don't have result
+                    CoreResponse.ErrorRes(sprintf "No help text available for symbol '%s'" sym)
+                  | Some(decl, _pos, _fn, _, _) -> //Is in sync filled cache, try to get results from async filled caches or calculate if it's not there
+
+                    let tip = decl.Description
+
+                    let n =
+                      match state.GetAutoCompleteNamespacesByDeclName sym with
+                      | Some s when not config.FullNameExternalAutocomplete -> Some s
+                      | _ -> None
+
+                    CoreResponse.Res(HelpText.Full(sym, tip, n))
 
 
-      asyncResult {
-        let tags = [ "CompletionItem", box ci ]
-        use trace = fsacActivitySource.StartActivityForType(thisType, tags = tags)
+            asyncResult {
+              let tags = [ "CompletionItem", box ci ]
+              use trace = fsacActivitySource.StartActivityForType(thisType, tags = tags)
 
-        try
-          logger.info (
-            Log.setMessage "CompletionItemResolve Request: {params}"
-            >> Log.addContextDestructured "params" ci
-          )
+              try
+                logger.info (
+                  Log.setMessage "CompletionItemResolve Request: {params}"
+                  >> Log.addContextDestructured "params" ci
+                )
 
-          return!
-            match ci.Data with
-            | None -> LspResult.internalError "No FullName"
-            | Some fullName ->
-              helpText (fullName.ToString())
-              |> Result.ofCoreResponse
-              |> Result.bimap
-                (function
-                | None -> ci
-                | Some text -> mapHelpText ci text)
-                (fun _ -> ci)
-              |> LspResult.success
+                return!
+                  match ci.Data with
+                  | None -> LspResult.internalError "No FullName"
+                  | Some fullName ->
+                    helpText (fullName.ToString())
+                    |> Result.ofCoreResponse
+                    |> Result.bimap
+                      (function
+                      | None -> ci
+                      | Some text -> mapHelpText ci text)
+                      (fun _ -> ci)
+                    |> LspResult.success
 
-        with e ->
-          trace |> Tracing.recordException e
+              with e ->
+                trace |> Tracing.recordException e
 
-          let logCfg =
-            Log.setMessage "CompletionItemResolve Request Errored {p}"
-            >> Log.addContextDestructured "p" ci
+                let logCfg =
+                  Log.setMessage "CompletionItemResolve Request Errored {p}"
+                  >> Log.addContextDestructured "p" ci
 
-          return! returnException e logCfg
-      }
+                return! returnException e logCfg
+            }
 
     override x.TextDocumentSignatureHelp(p: SignatureHelpParams) =
       asyncResult {
