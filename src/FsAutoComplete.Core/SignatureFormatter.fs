@@ -394,73 +394,56 @@ module SignatureFormatter =
       //When does this occur, val type within  module?
       if isDelegate then
         retType
-      else
+      else if func.IsMember || func.IsProperty || func.IsConstructor then
         modifiers ++ functionName + ":" ++ retType
+      else
+        functionName + ":" ++ retType
 
     | _ when func.IsProperty -> modifiers ++ functionName + ":" ++ retType
     | [ [] ] ->
       if isDelegate then
         retType
-      //A ctor with () parameters seems to be a list with an empty list.
-      // Also abstract members and abstract member overrides with one () parameter seem to be a list with an empty list.
       elif func.IsConstructor then
         let retType = if retType = "unit" then func.DisplayNameCore else retType
         modifiers + ": unit ->" ++ retType
       elif func.IsMember && (not func.IsPropertyGetterMethod) then
         modifiers + ": unit ->" ++ retType
+      else if func.IsMember || func.IsProperty || func.IsConstructor then
+        modifiers ++ functionName + ":" ++ retType
       else
-        modifiers ++ functionName + ":" ++ retType //Value members seems to be a list with an empty list
+        functionName + ": unit ->" ++ retType
     | [ [ p ] ] when maybeGetter && formatParameter p = "unit" -> //Member or property with only getter
-      modifiers ++ functionName + ":" ++ retType
+      if func.IsMember || func.IsProperty || func.IsConstructor then
+        modifiers ++ functionName + ":" ++ retType
+      else
+        functionName + ":" ++ retType
     | many ->
 
-      let allParamsLengths =
-        many |> List.map (List.map (fun p -> (formatParameter p).Length) >> List.sum)
-
-      let maxLength = (allParamsLengths |> List.maxUnderThreshold maxPadding) + 1
-
-      let formatParameterPadded length p =
-        let namePart = formatName indent padLength p
+      let formatParam (p: FSharpParameter) =
+        let name = safeParameterName p
         let paramType = formatParameter p
-        let paramFormat = namePart ++ paramType
-
-        "("+
-        if p.Type.IsGenericParameter then
-          let padding =
-            String.replicate (if length >= maxLength then 1 else maxLength - length) " "
-
-          let paramConstraint =
-            let formattedParam =
-              formatGenericParameter false displayContext p.Type.GenericParameter
-
-            if String.IsNullOrWhiteSpace formattedParam then
-              formattedParam
-            else
-              "(requires " + formattedParam + " )"
-
-          if paramConstraint = retTypeConstraint then
-            paramFormat
-          else
-            paramFormat + padding + paramConstraint
+        if String.IsNullOrWhiteSpace name then
+          paramType
         else
-          paramFormat
-        + ")"
+          name + ":" ++ paramType
+
+      let formatGroup (ps: FSharpParameter list) =
+        indent + "(" + (ps |> List.map formatParam |> String.concat " * ") + ")"
 
       let allParams =
-        List.zip many allParamsLengths
-        |> List.map (fun (paramTypes, length) ->
-          paramTypes |> List.map (formatParameterPadded length) |> String.concat $" *{nl}")
+        many
+        |> List.map formatGroup
         |> String.concat $"{nl}"
 
       let typeArguments =
-        let padding = String.replicate (max (padLength - 1) 0) " "
-
-        $"{allParams}{nl}{indent}{padding}: " ++ retType ++ retTypeConstraint
+        $"{allParams}{nl}{indent}: " ++ retType ++ retTypeConstraint
 
       if isDelegate then
         typeArguments
+      else if func.IsMember || func.IsProperty || func.IsConstructor then
+        modifiers ++ $"{functionName}{nl}{typeArguments}"
       else
-        modifiers ++ $"{functionName}{nl}{typeArguments} = _"
+        $"{functionName}{nl}{typeArguments}"
 
   let getFuncSignatureForTypeSignature
     displayContext
