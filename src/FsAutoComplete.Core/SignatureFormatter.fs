@@ -1020,8 +1020,14 @@ module SignatureFormatter =
       Some(signature, footerForType symbol)
 
     | SymbolUse.Field fsf ->
-      let signature = getFieldSignature symbol.DisplayContext fsf
-      Some(signature, footerForType symbol)
+      // If the field belongs to a record, show the full record type definition instead of just the field
+      match fsf.DeclaringEntity with
+      | Some ent when ent.IsFSharpRecord ->
+        let signature = getEntitySignature symbol.DisplayContext ent
+        Some(signature, footerForType symbol)
+      | _ ->
+        let signature = getFieldSignature symbol.DisplayContext fsf
+        Some(signature, footerForType symbol)
 
     | SymbolUse.UnionCase uc ->
       // Always show the full union type signature for any union case
