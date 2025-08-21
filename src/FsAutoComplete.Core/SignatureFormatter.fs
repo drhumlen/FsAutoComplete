@@ -762,13 +762,17 @@ module SignatureFormatter =
         fse.FSharpFields
         |> Seq.filter (fun n -> n.Accessibility.IsPublic) //TODO: If defined in same project as current scope then show also internals
         |> Seq.sortBy (fun n -> n.DisplayName)
-        |> Seq.map (getFieldSignature displayContext)
+        |> Seq.map (fun field ->
+            let retType = formatFSharpType displayContext field.FieldType
+            $"  {field.DisplayName}: {retType}"
+        )
+        |> Seq.toList
 
       let fields =
-        if Seq.length fields > 11 then
+        if List.length fields > 11 then
           seq {
-            yield! Seq.take 11 fields
-            yield "..."
+            yield! List.take 11 fields
+            yield "  ..."
           }
         else
           fields
@@ -791,28 +795,37 @@ module SignatureFormatter =
             getFuncSignatureForTypeSignature displayContext f l false false)
 
       let funcs =
-        if Seq.length funcs > 11 then
+        let funcsList = Seq.toList funcs
+        if List.length funcsList > 11 then
           seq {
-            yield! Seq.take 11 funcs
+            yield! List.take 11 funcsList
             yield "..."
           }
         else
-          funcs
+          funcsList
 
 
       let res =
-        [ yield constructors
-          if not fse.IsFSharpModule then
-            yield! fields
+        if fse.IsFSharpRecord then
+          let typeHeader = $"type {fse.DisplayName} = {{"
+          let fieldLines = fields |> String.concat $"{nl}"
+          let typeFooter = "}"
+          $"{typeHeader}{nl}{fieldLines}{nl}{typeFooter}"
+        else
+          let fieldsList = List.ofSeq fields
+          let funcsList = List.ofSeq funcs
+          [ yield constructors
+            if not fse.IsFSharpModule then
+              yield! fieldsList
 
-            if Seq.length fields > 0 then
-              yield nl
+              if List.length fieldsList > 0 then
+                yield nl
 
-            yield! funcs ]
-        |> Seq.distinct
-        |> String.concat $"{nl}  "
+              yield! funcsList ]
+          |> Seq.distinct
+          |> String.concat $"{nl}  "
 
-      if String.IsNullOrWhiteSpace res then "" else $"{nl}  {res}"
+      if String.IsNullOrWhiteSpace res then "" else $"{nl}{res}"
 
     let typeDisplay =
       let name =
@@ -837,7 +850,12 @@ module SignatureFormatter =
         else
           normalisedName
 
-      let basicName = modifier + typeName ++ name
+      let basicName =
+        if fse.IsFSharpRecord then
+          // For records, don't show the header, just return empty string
+          ""
+        else
+          modifier + typeName ++ name
 
       if fse.IsFSharpAbbreviation then
         if fse.AbbreviatedType.IsFunctionType then
