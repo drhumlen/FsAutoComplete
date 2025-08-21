@@ -619,7 +619,7 @@ module SignatureFormatter =
   let getValSignature displayContext (v: FSharpMemberOrFunctionOrValue) =
     let retType = formatFSharpType displayContext v.FullType
 
-    let prefix = if v.IsMutable then "let mutable" else "let"
+    let prefix = if v.IsMutable then "mutable" else ""
 
     let name =
       (if v.DisplayName.StartsWith("( ", StringComparison.Ordinal) then
@@ -641,8 +641,8 @@ module SignatureFormatter =
       | _ -> None
 
     match constraints with
-    | Some constraints -> prefix ++ name + ":" ++ constraints
-    | None -> prefix ++ name + ":" ++ retType
+    | Some constraints -> (prefix ++ name + ":" ++ constraints).Trim()
+    | None -> (prefix ++ name + ":" ++ retType).Trim()
 
   let getFieldSignature displayContext (field: FSharpField) =
     let retType = formatFSharpType displayContext field.FieldType
@@ -916,7 +916,11 @@ module SignatureFormatter =
     let valFooterData =
       try
         match entity with
-        | SymbolUse.MemberFunctionOrValue m -> Some(m.FullName, m.Assembly.SimpleName)
+        | SymbolUse.MemberFunctionOrValue m ->
+          if m.FullName = m.DisplayName then
+            None
+          else
+            Some(m.FullName, m.Assembly.SimpleName)
 
         | SymbolUse.Entity(c, _) -> Some(c.FullName, c.Assembly.SimpleName)
 
