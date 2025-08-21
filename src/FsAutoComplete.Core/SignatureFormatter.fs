@@ -395,7 +395,7 @@ module SignatureFormatter =
       if isDelegate then
         retType
       else if func.IsMember || func.IsProperty || func.IsConstructor then
-        modifiers ++ functionName + ":" ++ retType
+        $"_.{functionName}() : {retType}"
       else
         functionName + ":" ++ retType
 
@@ -409,12 +409,12 @@ module SignatureFormatter =
       elif func.IsMember && (not func.IsPropertyGetterMethod) then
         modifiers + ": unit ->" ++ retType
       else if func.IsMember || func.IsProperty || func.IsConstructor then
-        modifiers ++ functionName + ":" ++ retType
+        $"_.{functionName}() : {retType}"
       else
         functionName + ": unit ->" ++ retType
     | [ [ p ] ] when maybeGetter && formatParameter p = "unit" -> //Member or property with only getter
       if func.IsMember || func.IsProperty || func.IsConstructor then
-        modifiers ++ functionName + ":" ++ retType
+        $"_.{functionName}() : {retType}"
       else
         functionName + ":" ++ retType
     | many ->
@@ -428,22 +428,55 @@ module SignatureFormatter =
           name + ":" ++ paramType
 
       let formatGroup (ps: FSharpParameter list) =
-        indent + "(" + (ps |> List.map formatParam |> String.concat " * ") + ")"
+        ps |> List.map formatParam |> String.concat ("," + nl + "  ")
 
       let allParams =
         many
         |> List.map formatGroup
-        |> String.concat $"{nl}"
+        |> String.concat ("," + nl + "  ")
 
       let typeArguments =
-        $"{allParams}{nl}{indent}: " ++ retType ++ retTypeConstraint
+        if func.IsMember || func.IsProperty || func.IsConstructor then
+          $"_.{functionName}({nl}  {allParams}{nl}) : {retType}{retTypeConstraint}"
+        else
+          let paramGroups =
+            many
+            |> List.map (fun ps ->
+                ps
+                |> List.map formatParam
+                |> String.concat " * "
+                |> fun s -> $"  ({s})"
+            )
+            |> String.concat $"{nl}"
+          $"{functionName}{nl}{paramGroups}{nl}  : {retType}{retTypeConstraint}"
 
       if isDelegate then
-        typeArguments
+        if func.IsMember || func.IsProperty || func.IsConstructor then
+          $"_.{functionName}({nl}  {allParams}{nl}) : {retType}{retTypeConstraint}"
+        else
+          let paramGroups =
+            many
+            |> List.map (fun ps ->
+                ps
+                |> List.map formatParam
+                |> String.concat " * "
+                |> fun s -> $"  ({s})"
+            )
+            |> String.concat $"{nl}"
+          $"{functionName}{nl}{paramGroups}{nl}  : {retType}{retTypeConstraint}"
       else if func.IsMember || func.IsProperty || func.IsConstructor then
-        modifiers ++ $"{functionName}{nl}{typeArguments}"
+        $"_.{functionName}({nl}  {allParams}{nl}) : {retType}{retTypeConstraint}"
       else
-        $"{functionName}{nl}{typeArguments}"
+        let paramGroups =
+          many
+          |> List.map (fun ps ->
+              ps
+              |> List.map formatParam
+              |> String.concat " * "
+              |> fun s -> $"  ({s})"
+          )
+          |> String.concat $"{nl}"
+        $"{functionName}{nl}{paramGroups}{nl}  : {retType}{retTypeConstraint}"
 
   let getFuncSignatureForTypeSignature
     displayContext
@@ -566,16 +599,18 @@ module SignatureFormatter =
 
         let allParams =
           many
-          |> List.map (fun (paramTypes) ->
+          |> List.map (fun paramTypes ->
             paramTypes
             |> List.map (fun p ->
               let paramName = formatName p
-
               if String.IsNullOrWhiteSpace(paramName) then
                 formatParameter p
               else
                 paramName + ":" ++ (formatParameter p))
-            |> String.concat (" * "))
+            // Render each parameter on its own line, separated by commas and newlines, unless tuple type
+            // Always separate parameters with comma+newline for readability
+            |> (fun paramStrs -> String.concat ("," + nl + "   ") paramStrs)
+          )
           |> String.concat (" -> ")
 
         let typeArguments = allParams ++ "->" ++ retType
