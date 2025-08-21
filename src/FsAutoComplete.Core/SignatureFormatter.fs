@@ -683,10 +683,10 @@ module SignatureFormatter =
       match fse with
       | _ when fse.IsFSharpModule -> "module"
       | _ when fse.IsEnum -> "enum"
+      | _ when fse.IsFSharpUnion -> "type"
       | _ when fse.IsValueType -> "struct"
       | _ when fse.IsNamespace -> "namespace"
       | _ when fse.IsFSharpRecord -> "type"
-      | _ when fse.IsFSharpUnion -> "type"
       | _ when fse.IsInterface -> "interface"
       | _ -> "type"
 
@@ -988,7 +988,9 @@ module SignatureFormatter =
       Some(signature, footerForType symbol)
 
     | SymbolUse.UnionCase uc ->
-      let signature = getUnionCaseSignature symbol.DisplayContext uc
+      // Always show the full union type signature for any union case
+      let enclosingType = uc.ReturnType.TypeDefinition
+      let signature = getEntitySignature symbol.DisplayContext enclosingType
       Some(signature, footerForType symbol)
 
     | SymbolUse.ActivePatternCase apc ->
