@@ -365,13 +365,12 @@ type AdaptiveState
         FSIRefs.TFM.NetFx)
 
 
-  let sendDiagnostics (uri: DocumentUri) (diags: Diagnostic[]) =
+  let sendDiagnostics (uri: DocumentUri) (version: int option) (diags: Diagnostic[]) =
     logger.info (Log.setMessageI $"SendDiag for {uri:file}: {diags.Length:diags} entries")
 
-    // TODO: providing version would be very useful
     { Uri = uri
       Diagnostics = diags
-      Version = None }
+      Version = version }
     |> lspClient.TextDocumentPublishDiagnostics
 
 
@@ -2388,7 +2387,8 @@ type AdaptiveState
          IgnoreExpression.fix tryGetParseAndCheckResultsForFile
          ExprTypeMismatch.fix tryGetParseAndCheckResultsForFile
          AddMissingSeq.fix tryGetParseAndCheckResultsForFile
-         IntroduceMissingBinding.fix tryGetParseAndCheckResultsForFile getLineText |])
+         IntroduceMissingBinding.fix tryGetParseAndCheckResultsForFile getLineText
+         GenerateAnonRecordStub.fix tryGetParseAndCheckResultsForFile |])
 
   let forgetDocument (uri: DocumentUri) =
     async {
